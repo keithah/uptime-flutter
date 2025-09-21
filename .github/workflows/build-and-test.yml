@@ -72,18 +72,24 @@ jobs:
         # Create variables
         CERTIFICATE_PATH=$RUNNER_TEMP/dev_certificate.p12
         KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-        
+
         # Import certificate from secrets
         echo -n "$DEVELOPER_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
-        
+
         # Create temporary keychain
         security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
         security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
         security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-        
+
         # Import certificate to keychain
         security import $CERTIFICATE_PATH -P "$DEVELOPER_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
         security list-keychain -d user -s $KEYCHAIN_PATH
+
+        # Set key partition list to allow access
+        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+        # Verify certificate is available
+        security find-identity -v -p codesigning $KEYCHAIN_PATH
         
     - name: Configure code signing (Developer ID)
       if: github.ref == 'refs/heads/main'
@@ -93,10 +99,17 @@ jobs:
       run: |
         # Update bundle identifier and team ID
         /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" macos/Runner/Info.plist
-        
-        # Configure code signing in Xcode project
+
+        # Configure code signing in Xcode project for Release configuration
+        sed -i '' "s/CODE_SIGN_IDENTITY = \"-\"/CODE_SIGN_IDENTITY = \"Developer ID Application\"/g" macos/Runner.xcodeproj/project.pbxproj
         sed -i '' "s/DEVELOPMENT_TEAM = \"\"/DEVELOPMENT_TEAM = $TEAM_ID/g" macos/Runner.xcodeproj/project.pbxproj
         sed -i '' "s/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g" macos/Runner.xcodeproj/project.pbxproj
+
+        # Add team ID if not present
+        if ! grep -q "DEVELOPMENT_TEAM = $TEAM_ID" macos/Runner.xcodeproj/project.pbxproj; then
+          sed -i '' "/CODE_SIGN_STYLE = Manual/a\\
+\t\t\t\tDEVELOPMENT_TEAM = $TEAM_ID;" macos/Runner.xcodeproj/project.pbxproj
+        fi
         
     - name: Build macOS app (unsigned)
       if: github.ref != 'refs/heads/main'
@@ -107,20 +120,35 @@ jobs:
       if: github.ref == 'refs/heads/main'
       env:
         DEVELOPER_SIGNING_IDENTITY: ${{ secrets.DEVELOPER_SIGNING_IDENTITY }}
+        KEYCHAIN_PATH: $RUNNER_TEMP/app-signing.keychain-db
       run: |
+        # Ensure keychain is unlocked and set as default
+        security unlock-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" $KEYCHAIN_PATH
+        security default-keychain -s $KEYCHAIN_PATH
+
+        # Build the app with Flutter
         flutter build macos --release
-        
-        # Sign for Developer ID (with runtime hardening)
-        find build/macos/Build/Products/Release/uptime_flutter.app -name "*.dylib" -exec codesign --force --verify --verbose --sign "$DEVELOPER_SIGNING_IDENTITY" --options runtime {} \;
-        find build/macos/Build/Products/Release/uptime_flutter.app -name "*.framework" -exec codesign --force --verify --verbose --sign "$DEVELOPER_SIGNING_IDENTITY" --options runtime {} \;
-        codesign --force --options runtime --sign "$DEVELOPER_SIGNING_IDENTITY" build/macos/Build/Products/Release/uptime_flutter.app
+
+        # Sign for Developer ID (with runtime hardening and timestamp)
+        find build/macos/Build/Products/Release/uptime_flutter.app -name "*.dylib" -exec codesign --force --verify --verbose --sign "$DEVELOPER_SIGNING_IDENTITY" --options runtime --timestamp --keychain $KEYCHAIN_PATH {} \;
+        find build/macos/Build/Products/Release/uptime_flutter.app -name "*.framework" -exec codesign --force --verify --verbose --sign "$DEVELOPER_SIGNING_IDENTITY" --options runtime --timestamp --keychain $KEYCHAIN_PATH {} \;
+        codesign --force --deep --options runtime --timestamp --sign "$DEVELOPER_SIGNING_IDENTITY" --keychain $KEYCHAIN_PATH build/macos/Build/Products/Release/uptime_flutter.app
+
+        # Verify the signature
+        codesign --verify --deep --strict --verbose=2 build/macos/Build/Products/Release/uptime_flutter.app
         
     - name: Create DMG
       if: github.ref == 'refs/heads/main'
+      env:
+        DEVELOPER_SIGNING_IDENTITY: ${{ secrets.DEVELOPER_SIGNING_IDENTITY }}
+        KEYCHAIN_PATH: $RUNNER_TEMP/app-signing.keychain-db
       run: |
         # Install create-dmg for packaging
         brew install create-dmg
-        
+
+        # Ensure keychain is available
+        security unlock-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" $KEYCHAIN_PATH
+
         # Create DMG
         mkdir -p dist
         create-dmg \
@@ -132,6 +160,7 @@ jobs:
           --icon "uptime_flutter.app" 175 120 \
           --hide-extension "uptime_flutter.app" \
           --app-drop-link 425 120 \
+          --codesign "$DEVELOPER_SIGNING_IDENTITY" \
           "dist/UptimeKumaMonitor-Development-${{ github.sha }}.dmg" \
           "build/macos/Build/Products/Release/uptime_flutter.app"
           
