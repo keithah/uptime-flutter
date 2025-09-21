@@ -81,9 +81,14 @@ jobs:
         security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
         security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
-        # Import certificate to keychain
-        security import $CERTIFICATE_PATH -P "$DEVELOPER_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-        security list-keychain -d user -s $KEYCHAIN_PATH
+        # Verify certificate file
+        echo "Certificate file size: $(stat -f%z $CERTIFICATE_PATH) bytes"
+
+        # Import certificate to keychain with explicit trust settings
+        security import $CERTIFICATE_PATH -P "$DEVELOPER_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH -T /usr/bin/codesign -T /usr/bin/security
+
+        # Add keychain to search list
+        security list-keychain -d user -s $KEYCHAIN_PATH login.keychain
 
         # Set key partition list to allow access
         security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
