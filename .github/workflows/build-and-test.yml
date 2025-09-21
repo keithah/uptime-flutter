@@ -173,28 +173,31 @@ jobs:
         # Import certificate to keychain (try multiple approaches)
         echo "Attempting to import certificate..."
 
-        # Check if password is empty or not provided (handle "" as empty)
-        if [ -z "$DEVELOPER_P12_PASSWORD" ] || [ "$DEVELOPER_P12_PASSWORD" = '""' ] || [ "$DEVELOPER_P12_PASSWORD" = "" ]; then
-          echo "No password or empty password provided, trying import without password..."
-          if security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security; then
-            echo "✅ Certificate imported successfully without password"
-          else
-            echo "❌ Import without password failed"
-            exit 1
-          fi
+        # Import certificate with proper passphrase handling
+        echo "Importing certificate with empty passphrase..."
+
+        # Set up non-interactive environment
+        export SHELL=/bin/bash
+
+        # Method 1: Use empty passphrase explicitly
+        if echo "" | security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -P "" -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security 2>/dev/null; then
+          echo "✅ Certificate imported successfully with empty passphrase"
+        # Method 2: Try without -P flag
+        elif echo "" | security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security 2>/dev/null; then
+          echo "✅ Certificate imported successfully without -P flag"
+        # Method 3: Use expect to handle password prompt
+        elif command -v expect >/dev/null 2>&1; then
+          echo "Trying with expect to handle password prompt..."
+          expect -c "
+            spawn security import \"$CERTIFICATE_PATH\" -k \"$KEYCHAIN_PATH\" -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security
+            expect \"password to unlock*\"
+            send \"\r\"
+            expect eof
+          "
+          echo "✅ Certificate imported with expect"
         else
-          echo "Password provided: '$DEVELOPER_P12_PASSWORD', trying import with password..."
-          if security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -P "$DEVELOPER_P12_PASSWORD" -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security; then
-            echo "✅ Certificate imported successfully with password"
-          else
-            echo "❌ Import with password failed, trying without password..."
-            if security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security; then
-              echo "✅ Certificate imported successfully without password"
-            else
-              echo "❌ All import attempts failed"
-              exit 1
-            fi
-          fi
+          echo "❌ All import attempts failed"
+          exit 1
         fi
 
         # Unlock keychain again after import
