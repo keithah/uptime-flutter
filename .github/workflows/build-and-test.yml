@@ -140,17 +140,42 @@ jobs:
         security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
         security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
-        # Import certificate to keychain with explicit trust settings
-        security import $CERTIFICATE_PATH -P "$DEVELOPER_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH -T /usr/bin/codesign -T /usr/bin/security
+        # Try importing certificate without password first
+        echo "Attempting import without password..."
+        if ! security import $CERTIFICATE_PATH -A -t cert -f pkcs12 -k $KEYCHAIN_PATH 2>/dev/null; then
+          echo "Import without password failed, trying with password..."
+          security import $CERTIFICATE_PATH -P "$DEVELOPER_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+        else
+          echo "Certificate imported successfully without password"
+        fi
 
-        # Add keychain to search list
+        # Unlock keychain again after import
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+        # Add keychain to search list (keychain first, then login)
         security list-keychain -d user -s $KEYCHAIN_PATH login.keychain
 
-        # Set key partition list to allow access
+        # Set default keychain
+        security default-keychain -s $KEYCHAIN_PATH
+
+        # Set key partition list to allow access without password prompt
         security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
-        # Verify certificate is available
+        # Debug: List all keychains
+        echo "Available keychains:"
+        security list-keychains -d user
+
+        # Debug: Check keychain contents
+        echo "Keychain contents:"
+        security dump-keychain $KEYCHAIN_PATH | grep -A5 -B5 "Developer ID"
+
+        # Verify certificate is available in specific keychain
+        echo "Certificates in custom keychain:"
         security find-identity -v -p codesigning $KEYCHAIN_PATH
+
+        # Verify certificate is available globally
+        echo "All available signing identities:"
+        security find-identity -v -p codesigning
 
     - name: Configure code signing (Developer ID)
       if: github.ref == 'refs/heads/main'
