@@ -140,13 +140,13 @@ jobs:
       env:
         NOTARIZE_USERNAME: ${{ secrets.NOTARIZE_USERNAME }}
         NOTARIZE_PASSWORD: ${{ secrets.NOTARIZE_PASSWORD }}
-        NOTARIZE_TEAM_ID: ${{ secrets.NOTARIZE_TEAM_ID }}
+        TEAM_ID: ${{ secrets.TEAM_ID }}
       run: |
         echo "Submitting DMG for notarization..."
         xcrun notarytool submit dist/UptimeKumaMonitor-Development-${{ github.sha }}.dmg \
           --apple-id "$NOTARIZE_USERNAME" \
           --password "$NOTARIZE_PASSWORD" \
-          --team-id "$NOTARIZE_TEAM_ID" \
+          --team-id "$TEAM_ID" \
           --wait
           
         echo "Stapling notarization to DMG..."

@@ -68,7 +68,6 @@ KEYCHAIN_PASSWORD              # Random password for temporary keychain
 # For notarization (optional)
 NOTARIZE_USERNAME              # Your Apple ID email
 NOTARIZE_PASSWORD              # App-specific password
-NOTARIZE_TEAM_ID              # Your Apple Developer Team ID
 ```
 
 ### Workflow Triggers
