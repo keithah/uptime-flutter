@@ -15,23 +15,45 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
         flutter-version: ${{ env.FLUTTER_VERSION }}
         channel: 'stable'
         cache: true
-        
+
+    - name: Cache pub dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.pub-cache
+          **/.dart_tool
+          **/.packages
+        key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-pub-
+
+    - name: Cache build_runner outputs
+      uses: actions/cache@v4
+      with:
+        path: |
+          **/*.g.dart
+          **/*.freezed.dart
+          **/*.chopper.dart
+        key: ${{ runner.os }}-generated-${{ hashFiles('**/pubspec.lock', '**/*.dart') }}
+        restore-keys: |
+          ${{ runner.os }}-generated-
+
     - name: Get dependencies
       run: flutter pub get
-      
+
     - name: Generate code
       run: dart run build_runner build --delete-conflicting-outputs
-      
+
     - name: Analyze code
       run: flutter analyze
-      
+
     - name: Run tests
       run: flutter test
 
@@ -39,29 +61,63 @@ jobs:
     runs-on: macos-latest
     needs: analyze-and-test
     if: github.event_name != 'pull_request'
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
         flutter-version: ${{ env.FLUTTER_VERSION }}
         channel: 'stable'
         cache: true
-        
+
+    - name: Cache pub dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.pub-cache
+          **/.dart_tool
+          **/.packages
+        key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-pub-
+
+    - name: Cache Xcode build outputs
+      uses: actions/cache@v4
+      with:
+        path: |
+          build/macos/Build/Products
+          build/macos/Build/Intermediates.noindex
+          macos/Pods
+          ~/.cocoapods
+        key: ${{ runner.os }}-xcode-${{ hashFiles('**/Podfile.lock', 'macos/**/*.pbxproj') }}
+        restore-keys: |
+          ${{ runner.os }}-xcode-
+
+    - name: Cache generated code
+      uses: actions/cache@v4
+      with:
+        path: |
+          **/*.g.dart
+          **/*.freezed.dart
+          **/*.chopper.dart
+        key: ${{ runner.os }}-generated-${{ hashFiles('**/pubspec.lock', '**/*.dart') }}
+        restore-keys: |
+          ${{ runner.os }}-generated-
+
     - name: Get dependencies
       run: flutter pub get
-      
+
     - name: Generate code
       run: dart run build_runner build --delete-conflicting-outputs
-      
+
     - name: Update macOS deployment target
       run: |
         # Update minimum macOS version for modern features
         sed -i '' 's/MACOSX_DEPLOYMENT_TARGET = 10.14/MACOSX_DEPLOYMENT_TARGET = 11.0/g' macos/Runner.xcodeproj/project.pbxproj
-        
+
     - name: Install Apple Certificate (Developer ID)
       if: github.ref == 'refs/heads/main'
       env:
@@ -76,13 +132,13 @@ jobs:
         # Import certificate from secrets
         echo -n "$DEVELOPER_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
 
+        # Verify certificate file
+        echo "Certificate file size: $(stat -f%z $CERTIFICATE_PATH) bytes"
+
         # Create temporary keychain
         security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
         security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
         security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-        # Verify certificate file
-        echo "Certificate file size: $(stat -f%z $CERTIFICATE_PATH) bytes"
 
         # Import certificate to keychain with explicit trust settings
         security import $CERTIFICATE_PATH -P "$DEVELOPER_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH -T /usr/bin/codesign -T /usr/bin/security
@@ -95,7 +151,7 @@ jobs:
 
         # Verify certificate is available
         security find-identity -v -p codesigning $KEYCHAIN_PATH
-        
+
     - name: Configure code signing (Developer ID)
       if: github.ref == 'refs/heads/main'
       env:
@@ -114,12 +170,12 @@ jobs:
         if ! grep -q "DEVELOPMENT_TEAM = $TEAM_ID" macos/Runner.xcodeproj/project.pbxproj; then
           sed -i '' "s/CODE_SIGN_STYLE = Manual;/CODE_SIGN_STYLE = Manual;\n\t\t\t\tDEVELOPMENT_TEAM = $TEAM_ID;/g" macos/Runner.xcodeproj/project.pbxproj
         fi
-        
+
     - name: Build macOS app (unsigned)
       if: github.ref != 'refs/heads/main'
       run: |
         flutter build macos --release
-        
+
     - name: Build macOS app (signed for Developer ID)
       if: github.ref == 'refs/heads/main'
       env:
@@ -140,7 +196,7 @@ jobs:
 
         # Verify the signature
         codesign --verify --deep --strict --verbose=2 build/macos/Build/Products/Release/uptime_flutter.app
-        
+
     - name: Create DMG
       if: github.ref == 'refs/heads/main'
       env:
@@ -167,7 +223,7 @@ jobs:
           --codesign "$DEVELOPER_SIGNING_IDENTITY" \
           "dist/UptimeKumaMonitor-Development-${{ github.sha }}.dmg" \
           "build/macos/Build/Products/Release/uptime_flutter.app"
-          
+
     - name: Notarize DMG
       if: github.ref == 'refs/heads/main'
       env:
@@ -181,20 +237,20 @@ jobs:
           --password "$NOTARIZE_PASSWORD" \
           --team-id "$TEAM_ID" \
           --wait
-          
+
         echo "Stapling notarization to DMG..."
         xcrun stapler staple dist/UptimeKumaMonitor-Development-${{ github.sha }}.dmg
-        
+
     - name: Verify code signature
       if: github.ref == 'refs/heads/main'
       run: |
         echo "Verifying app signature..."
         codesign --verify --deep --strict build/macos/Build/Products/Release/uptime_flutter.app
         spctl -a -t exec -vv build/macos/Build/Products/Release/uptime_flutter.app
-        
+
         echo "Verifying DMG signature..."
         spctl -a -t open --context context:primary-signature -vv dist/UptimeKumaMonitor-Development-${{ github.sha }}.dmg
-        
+
     - name: Upload build artifacts
       if: always()
       uses: actions/upload-artifact@v4
@@ -204,7 +260,7 @@ jobs:
           dist/*.dmg
           build/macos/Build/Products/Release/uptime_flutter.app
         retention-days: 30
-        
+
     - name: Clean up keychain
       if: always() && github.ref == 'refs/heads/main'
       run: |
@@ -213,38 +269,78 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     needs: analyze-and-test
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
+    - name: Cache Linux dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          /var/cache/apt/archives
+        key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/build-and-test.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-apt-
+
     - name: Install Linux dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y cmake ninja-build libgtk-3-dev clang \
           libayatana-appindicator3-dev libsecret-1-dev
-        
+
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
         flutter-version: ${{ env.FLUTTER_VERSION }}
         channel: 'stable'
         cache: true
-        
+
+    - name: Cache pub dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.pub-cache
+          **/.dart_tool
+          **/.packages
+        key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-pub-
+
+    - name: Cache generated code
+      uses: actions/cache@v4
+      with:
+        path: |
+          **/*.g.dart
+          **/*.freezed.dart
+          **/*.chopper.dart
+        key: ${{ runner.os }}-generated-${{ hashFiles('**/pubspec.lock', '**/*.dart') }}
+        restore-keys: |
+          ${{ runner.os }}-generated-
+
+    - name: Cache Linux build outputs
+      uses: actions/cache@v4
+      with:
+        path: |
+          build/linux/x64/release
+        key: ${{ runner.os }}-linux-build-${{ hashFiles('**/pubspec.lock', 'linux/**/*') }}
+        restore-keys: |
+          ${{ runner.os }}-linux-build-
+
     - name: Get dependencies
       run: flutter pub get
-      
+
     - name: Generate code
       run: dart run build_runner build --delete-conflicting-outputs
-      
+
     - name: Build Linux app
       run: flutter build linux --release
-      
+
     - name: Package Linux app
       run: |
         mkdir -p dist
         tar -czf dist/UptimeKumaMonitor-Linux-${{ github.sha }}.tar.gz -C build/linux/x64/release/bundle .
-        
+
     - name: Upload Linux artifacts
       uses: actions/upload-artifact@v4
       with:
