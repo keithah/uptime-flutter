@@ -1,0 +1,27 @@
+name: Test Build
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  test-simple:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Test step
+      run: echo "Testing workflow syntax"
+      
+    - name: Test conditional
+      if: github.ref == 'refs/heads/main'
+      run: echo "Main branch detected"
+      
+    - name: Test secret conditional
+      if: secrets.DEVELOPER_CERTIFICATE_BASE64
+      run: echo "Certificate available"
+      
+    - name: Test no secret conditional  
+      if: "!secrets.DEVELOPER_CERTIFICATE_BASE64"
+      run: echo "No certificate"
