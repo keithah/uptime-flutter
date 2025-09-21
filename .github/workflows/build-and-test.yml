@@ -1,0 +1,219 @@
+name: Build and Test (Non-App Store)
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  FLUTTER_VERSION: '3.24.5'
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+        channel: 'stable'
+        cache: true
+        
+    - name: Get dependencies
+      run: flutter pub get
+      
+    - name: Generate code
+      run: dart run build_runner build --delete-conflicting-outputs
+      
+    - name: Analyze code
+      run: flutter analyze
+      
+    - name: Run tests
+      run: flutter test
+
+  build-macos-development:
+    runs-on: macos-latest
+    needs: analyze-and-test
+    if: github.event_name != 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+        channel: 'stable'
+        cache: true
+        
+    - name: Get dependencies
+      run: flutter pub get
+      
+    - name: Generate code
+      run: dart run build_runner build --delete-conflicting-outputs
+      
+    - name: Update macOS deployment target
+      run: |
+        # Update minimum macOS version for modern features
+        sed -i '' 's/MACOSX_DEPLOYMENT_TARGET = 10.14/MACOSX_DEPLOYMENT_TARGET = 11.0/g' macos/Runner.xcodeproj/project.pbxproj
+        
+    - name: Install Apple Certificate (Developer ID)
+      if: github.ref == 'refs/heads/main'
+      env:
+        DEVELOPER_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_CERTIFICATE_BASE64 }}
+        DEVELOPER_P12_PASSWORD: ${{ secrets.DEVELOPER_P12_PASSWORD }}
+        KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      run: |
+        # Create variables
+        CERTIFICATE_PATH=$RUNNER_TEMP/dev_certificate.p12
+        KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+        
+        # Import certificate from secrets
+        echo -n "$DEVELOPER_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+        
+        # Create temporary keychain
+        security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+        security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+        
+        # Import certificate to keychain
+        security import $CERTIFICATE_PATH -P "$DEVELOPER_P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+        security list-keychain -d user -s $KEYCHAIN_PATH
+        
+    - name: Configure code signing (Developer ID)
+      if: github.ref == 'refs/heads/main'
+      env:
+        TEAM_ID: ${{ secrets.TEAM_ID }}
+        BUNDLE_ID: ${{ secrets.APP_BUNDLE_ID }}
+      run: |
+        # Update bundle identifier and team ID
+        /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" macos/Runner/Info.plist
+        
+        # Configure code signing in Xcode project
+        sed -i '' "s/DEVELOPMENT_TEAM = \"\"/DEVELOPMENT_TEAM = $TEAM_ID/g" macos/Runner.xcodeproj/project.pbxproj
+        sed -i '' "s/CODE_SIGN_STYLE = Automatic/CODE_SIGN_STYLE = Manual/g" macos/Runner.xcodeproj/project.pbxproj
+        
+    - name: Build macOS app (unsigned)
+      if: github.ref != 'refs/heads/main'
+      run: |
+        flutter build macos --release
+        
+    - name: Build macOS app (signed for Developer ID)
+      if: github.ref == 'refs/heads/main'
+      env:
+        DEVELOPER_SIGNING_IDENTITY: ${{ secrets.DEVELOPER_SIGNING_IDENTITY }}
+      run: |
+        flutter build macos --release
+        
+        # Sign for Developer ID (with runtime hardening)
+        find build/macos/Build/Products/Release/uptime_flutter.app -name "*.dylib" -exec codesign --force --verify --verbose --sign "$DEVELOPER_SIGNING_IDENTITY" --options runtime {} \;
+        find build/macos/Build/Products/Release/uptime_flutter.app -name "*.framework" -exec codesign --force --verify --verbose --sign "$DEVELOPER_SIGNING_IDENTITY" --options runtime {} \;
+        codesign --force --options runtime --sign "$DEVELOPER_SIGNING_IDENTITY" build/macos/Build/Products/Release/uptime_flutter.app
+        
+    - name: Create DMG
+      if: github.ref == 'refs/heads/main'
+      run: |
+        # Install create-dmg for packaging
+        brew install create-dmg
+        
+        # Create DMG
+        mkdir -p dist
+        create-dmg \
+          --volname "Uptime Kuma Monitor" \
+          --volicon "macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_512.png" \
+          --window-pos 200 120 \
+          --window-size 600 400 \
+          --icon-size 100 \
+          --icon "uptime_flutter.app" 175 120 \
+          --hide-extension "uptime_flutter.app" \
+          --app-drop-link 425 120 \
+          "dist/UptimeKumaMonitor-Development-${{ github.sha }}.dmg" \
+          "build/macos/Build/Products/Release/uptime_flutter.app"
+          
+    - name: Notarize DMG
+      if: github.ref == 'refs/heads/main'
+      env:
+        NOTARIZE_USERNAME: ${{ secrets.NOTARIZE_USERNAME }}
+        NOTARIZE_PASSWORD: ${{ secrets.NOTARIZE_PASSWORD }}
+        NOTARIZE_TEAM_ID: ${{ secrets.NOTARIZE_TEAM_ID }}
+      run: |
+        echo "Submitting DMG for notarization..."
+        xcrun notarytool submit dist/UptimeKumaMonitor-Development-${{ github.sha }}.dmg \
+          --apple-id "$NOTARIZE_USERNAME" \
+          --password "$NOTARIZE_PASSWORD" \
+          --team-id "$NOTARIZE_TEAM_ID" \
+          --wait
+          
+        echo "Stapling notarization to DMG..."
+        xcrun stapler staple dist/UptimeKumaMonitor-Development-${{ github.sha }}.dmg
+        
+    - name: Verify code signature
+      if: github.ref == 'refs/heads/main'
+      run: |
+        echo "Verifying app signature..."
+        codesign --verify --deep --strict build/macos/Build/Products/Release/uptime_flutter.app
+        spctl -a -t exec -vv build/macos/Build/Products/Release/uptime_flutter.app
+        
+        echo "Verifying DMG signature..."
+        spctl -a -t open --context context:primary-signature -vv dist/UptimeKumaMonitor-Development-${{ github.sha }}.dmg
+        
+    - name: Upload build artifacts
+      if: github.ref == 'refs/heads/main'
+      uses: actions/upload-artifact@v4
+      with:
+        name: macos-development-build-${{ github.sha }}
+        path: |
+          dist/*.dmg
+          build/macos/Build/Products/Release/uptime_flutter.app
+        retention-days: 30
+        
+    - name: Clean up keychain
+      if: always() && github.ref == 'refs/heads/main'
+      run: |
+        security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
+
+  build-linux:
+    runs-on: ubuntu-latest
+    needs: analyze-and-test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install Linux dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build libgtk-3-dev clang
+        
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+        channel: 'stable'
+        cache: true
+        
+    - name: Get dependencies
+      run: flutter pub get
+      
+    - name: Generate code
+      run: dart run build_runner build --delete-conflicting-outputs
+      
+    - name: Build Linux app
+      run: flutter build linux --release
+      
+    - name: Package Linux app
+      run: |
+        mkdir -p dist
+        tar -czf dist/UptimeKumaMonitor-Linux-${{ github.sha }}.tar.gz -C build/linux/x64/release/bundle .
+        
+    - name: Upload Linux artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: linux-build-${{ github.sha }}
+        path: dist/*.tar.gz
+        retention-days: 30

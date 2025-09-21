@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Required for App Store: Enable sandboxing -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	
+	<!-- Network access for connecting to Uptime Kuma servers -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	
+	<!-- No server capabilities needed -->
+	<key>com.apple.security.network.server</key>
+	<false/>
+	
+	<!-- User notifications for monitor alerts -->
+	<key>com.apple.security.user-notifications</key>
+	<true/>
+	
+	<!-- File access only for user-selected files (settings export/import) -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	
+	<!-- No automatic file system access -->
+	<key>com.apple.security.files.downloads.read-write</key>
+	<false/>
+	
+	<!-- No device access needed -->
+	<key>com.apple.security.device.audio-input</key>
+	<false/>
+	<key>com.apple.security.device.camera</key>
+	<false/>
+	<key>com.apple.security.device.microphone</key>
+	<false/>
+	
+	<!-- No personal information access -->
+	<key>com.apple.security.personal-information.location</key>
+	<false/>
+	<key>com.apple.security.personal-information.addressbook</key>
+	<false/>
+	<key>com.apple.security.personal-information.calendars</key>
+	<false/>
+	<key>com.apple.security.personal-information.photos-library</key>
+	<false/>
+	
+	<!-- No printing needed -->
+	<key>com.apple.security.print</key>
+	<false/>
+	
+	<!-- No automation/scripting -->
+	<key>com.apple.security.automation.apple-events</key>
+	<false/>
+	<key>com.apple.security.scripting-targets</key>
+	<false/>
+	
+	<!-- Hardened runtime for notarization -->
+	<key>com.apple.security.cs.allow-jit</key>
+	<false/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<false/>
+	<key>com.apple.security.cs.allow-dyld-environment-variables</key>
+	<false/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<false/>
+</dict>
+</plist>
