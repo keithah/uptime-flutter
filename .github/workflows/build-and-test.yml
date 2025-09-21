@@ -124,7 +124,19 @@ jobs:
         DEVELOPER_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_CERTIFICATE_BASE64 }}
         DEVELOPER_P12_PASSWORD: ${{ secrets.DEVELOPER_P12_PASSWORD }}
         KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        DEVELOPER_SIGNING_IDENTITY: ${{ secrets.DEVELOPER_SIGNING_IDENTITY }}
       run: |
+        echo "Looking for Developer ID Application certificate..."
+        echo "Expected identity: $DEVELOPER_SIGNING_IDENTITY"
+
+        # Check if certificate is already available (shouldn't be in CI, but good to check)
+        if security find-identity -v -p codesigning | grep -q "Developer ID Application.*Keith Herrington.*6R7S5GA944"; then
+          echo "✅ Developer ID certificate already available in keychain"
+          security find-identity -v -p codesigning | grep "Developer ID Application"
+          exit 0
+        fi
+
+        echo "Certificate not found, importing from secrets..."
         # Create variables
         CERTIFICATE_PATH=$RUNNER_TEMP/dev_certificate.p12
         KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
@@ -143,17 +155,23 @@ jobs:
         # Import certificate to keychain (try multiple approaches)
         echo "Attempting to import certificate..."
 
-        # First try with the provided password
-        if security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -P "$DEVELOPER_P12_PASSWORD" -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security; then
-          echo "✅ Certificate imported successfully with password"
-        else
-          echo "❌ Import with password failed, trying without password..."
+        # Check if password is empty or not provided
+        if [ -z "$DEVELOPER_P12_PASSWORD" ]; then
+          echo "No password provided, trying import without password..."
           if security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security; then
             echo "✅ Certificate imported successfully without password"
           else
-            echo "❌ Certificate import failed. Trying with empty password..."
-            if security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -P "" -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security; then
-              echo "✅ Certificate imported successfully with empty password"
+            echo "❌ Import without password failed"
+            exit 1
+          fi
+        else
+          echo "Password provided, trying import with password..."
+          if security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -P "$DEVELOPER_P12_PASSWORD" -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security; then
+            echo "✅ Certificate imported successfully with password"
+          else
+            echo "❌ Import with password failed, trying without password..."
+            if security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" -A -t cert -f pkcs12 -T /usr/bin/codesign -T /usr/bin/security; then
+              echo "✅ Certificate imported successfully without password"
             else
               echo "❌ All import attempts failed"
               exit 1
