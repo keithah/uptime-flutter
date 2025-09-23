@@ -60,17 +60,8 @@ class StatusBarController {
     // Function to show the popover
     func showPopover(_ sender: AnyObject) {
         if let statusBarMenuButton = statusBarMenuItem.button {
-            // Get the main Flutter window and its view controller
-            if let appDelegate = NSApplication.shared.delegate as? AppDelegate,
-               let mainWindow = appDelegate.mainFlutterWindow,
-               let flutterViewController = mainWindow.contentViewController as? FlutterViewController {
-
-                // Set the Flutter view controller as the popover content
-                flutterUIPopover.contentViewController = flutterViewController
-
-                // Show the popover
-                flutterUIPopover.show(relativeTo: statusBarMenuButton.bounds, of: statusBarMenuButton, preferredEdge: NSRectEdge.maxY)
-            }
+            // Show the popover (content is already set in AppDelegate)
+            flutterUIPopover.show(relativeTo: statusBarMenuButton.bounds, of: statusBarMenuButton, preferredEdge: NSRectEdge.maxY)
         }
     }
 

@@ -9,6 +9,10 @@ class AppDelegate: FlutterAppDelegate {
   // Instance of the popover that will display the Flutter UI
   var flutterUIPopover = NSPopover.init()
 
+  // Dedicated Flutter engine and view controller for the popover
+  var popoverFlutterEngine: FlutterEngine?
+  var popoverFlutterViewController: FlutterViewController?
+
   // Initializer for the AppDelegate class
   override init() {
     // Set the popover behavior to transient, meaning it will close when the user clicks outside of it
@@ -25,25 +29,38 @@ class AppDelegate: FlutterAppDelegate {
   override func applicationDidFinishLaunching(_ aNotification: Notification) {
     print("AppDelegate: applicationDidFinishLaunching called")
 
-    // Set up status bar immediately - keep it simple and working
-    self.setupStatusBarOnly()
+    // Hide main window immediately before super call
+    if let window = mainFlutterWindow {
+      window.orderOut(nil)
+      window.setIsVisible(false)
+    }
 
-    // Call the superclass's applicationDidFinishLaunching function first
+    // Call the superclass's applicationDidFinishLaunching function
     super.applicationDidFinishLaunching(aNotification)
     print("AppDelegate: super.applicationDidFinishLaunching completed")
 
-    // Hide the main window after everything is set up
-    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-      print("AppDelegate: Hiding main window")
-      self.mainFlutterWindow?.orderOut(nil)
+    // Close the main window completely after super call
+    if let window = mainFlutterWindow {
+      window.close()
     }
+
+    // Set up status bar with dedicated Flutter engine
+    self.setupStatusBarOnly()
   }
 
   private func setupStatusBarOnly() {
     print("AppDelegate: setupStatusBarOnly called")
 
+    // Create a dedicated Flutter engine for the popover
+    popoverFlutterEngine = FlutterEngine(name: "popover_engine", project: nil)
+    popoverFlutterEngine?.run(withEntrypoint: nil)
+
+    // Create a Flutter view controller for the popover
+    popoverFlutterViewController = FlutterViewController(engine: popoverFlutterEngine!, nibName: nil, bundle: nil)
+
     // Set the size of the popover to match your screenshot
     flutterUIPopover.contentSize = NSSize(width: 400, height: 600)
+    flutterUIPopover.contentViewController = popoverFlutterViewController
 
     // Initialize the status bar controller with the popover
     print("AppDelegate: About to initialize StatusBarController")

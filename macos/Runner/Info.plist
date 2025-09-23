@@ -36,9 +36,9 @@
 	<key>CFBundleDisplayName</key>
 	<string>Uptime Kuma Monitor</string>
 	
-	<!-- Not a background-only app (LSUIElement = false means it appears in Dock) -->
+	<!-- Background app - only appears in menubar, not Dock -->
 	<key>LSUIElement</key>
-	<false/>
+	<true/>
 	
 	<!-- App Store compliance: Don't terminate automatically -->
 	<key>NSSupportsAutomaticTermination</key>

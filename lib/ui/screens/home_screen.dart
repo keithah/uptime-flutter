@@ -2,10 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/uptime_kuma_service.dart';
-import '../widgets/monitor_card.dart';
-import '../widgets/monitor_group_card.dart';
-import '../widgets/status_header.dart';
-import '../widgets/connection_status_indicator.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,34 +14,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Uptime Kuma Monitor'),
-        actions: [
-          Consumer<UptimeKumaService>(
-            builder: (context, service, child) {
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const ConnectionStatusIndicator(),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: service.isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.refresh),
-                    onPressed: service.isLoading ? null : () => service.fetchData(),
-                    tooltip: 'Refresh',
-                  ),
-                  const SizedBox(width: 8),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
       body: Consumer<UptimeKumaService>(
         builder: (context, service, child) {
           if (service.isLoading && service.monitors.isEmpty) {
@@ -63,159 +31,114 @@ class _HomeScreenState extends State<HomeScreen> {
             return const _EmptyStateView();
           }
 
-          return RefreshIndicator(
-            onRefresh: () async => service.fetchData(),
-            child: CustomScrollView(
-              slivers: [
-                // Status Header
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: StatusHeader(
-                      overallStatus: service.overallStatus,
-                      totalMonitors: service.totalMonitors,
-                      onlineMonitors: service.onlineMonitors,
-                      lastUpdate: service.lastUpdate,
-                    ),
-                  ),
-                ),
-
-                // Failed Monitors Section
-                if (service.failedMonitors.isNotEmpty) ...[
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.warning,
-                            color: Theme.of(context).colorScheme.error,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Failed Monitors (${service.failedMonitors.length})',
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: Theme.of(context).colorScheme.error,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final monitor = service.failedMonitors[index];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16.0,
-                            vertical: 4.0,
-                          ),
-                          child: MonitorCard(
-                            monitor: monitor,
-                            status: service.getMonitorStatus(monitor.id),
-                            uptime: service.uptimes[monitor.id],
-                            responseTime: service.getMonitorResponseTime(monitor.id),
-                            showResponseTime: service.settings.showResponseTime,
-                            isCompact: service.settings.compactMode,
-                            isHighlighted: true,
-                          ),
-                        );
-                      },
-                      childCount: service.failedMonitors.length,
-                    ),
-                  ),
-                  const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                      child: Divider(),
-                    ),
-                  ),
-                ],
-
-                // Monitor Groups
-                if (service.groups.isNotEmpty) ...[
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Text(
-                        'Monitor Groups',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final group = service.groups[index];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16.0,
-                            vertical: 4.0,
-                          ),
-                          child: MonitorGroupCard(
-                            group: group,
-                            service: service,
-                          ),
-                        );
-                      },
-                      childCount: service.groups.length,
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                ],
-
-                // Standalone Monitors
-                if (service.standaloneMonitors.isNotEmpty) ...[
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Text(
-                        'Monitors',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final monitor = service.standaloneMonitors[index];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16.0,
-                            vertical: 4.0,
-                          ),
-                          child: MonitorCard(
-                            monitor: monitor,
-                            status: service.getMonitorStatus(monitor.id),
-                            uptime: service.uptimes[monitor.id],
-                            responseTime: service.getMonitorResponseTime(monitor.id),
-                            showResponseTime: service.settings.showResponseTime,
-                            isCompact: service.settings.compactMode,
-                          ),
-                        );
-                      },
-                      childCount: service.standaloneMonitors.length,
-                    ),
-                  ),
-                ],
-
-                // Bottom padding
-                const SliverToBoxAdapter(child: SizedBox(height: 16)),
-              ],
-            ),
-          );
+          return _CleanMonitorGroupList(service: service);
         },
       ),
+    );
+  }
+}
+
+class _CleanMonitorGroupList extends StatelessWidget {
+  const _CleanMonitorGroupList({required this.service});
+
+  final UptimeKumaService service;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+      children: [
+        // Show groups
+        if (service.groups.isNotEmpty) ...[
+          ...service.groups.map((group) {
+            final groupMonitors = service.monitors.values.where((m) => m.parent == group.id).toList();
+            final onlineCount = groupMonitors.where((m) => service.getMonitorStatus(m.id) == 'up').length;
+            final totalCount = groupMonitors.length;
+            final allOnline = onlineCount == totalCount;
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 1.0, horizontal: 8.0),
+              child: Container(
+                height: 32,
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(6.0),
+                ),
+                child: Row(
+                  children: [
+                    // Status indicator
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: allOnline ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Group name and count
+                    Expanded(
+                      child: Text(
+                        '${group.name} $onlineCount/$totalCount',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ],
+
+        // Show standalone monitors
+        if (service.standaloneMonitors.isNotEmpty) ...[
+          ...service.standaloneMonitors.map((monitor) {
+            final isOnline = service.getMonitorStatus(monitor.id) == 'up';
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 1.0, horizontal: 8.0),
+              child: Container(
+                height: 32,
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(6.0),
+                ),
+                child: Row(
+                  children: [
+                    // Status indicator
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: isOnline ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // Monitor name
+                    Expanded(
+                      child: Text(
+                        monitor.name,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ],
+      ],
     );
   }
 }
@@ -257,13 +180,13 @@ class _ErrorView extends StatelessWidget {
           children: [
             Icon(
               Icons.error_outline,
-              size: 64,
+              size: 48,
               color: Theme.of(context).colorScheme.error,
             ),
             const SizedBox(height: 16),
             Text(
               'Connection Error',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: Theme.of(context).colorScheme.error,
               ),
             ),
@@ -271,12 +194,12 @@ class _ErrorView extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
+            const SizedBox(height: 16),
+            TextButton.icon(
               onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
+              icon: const Icon(Icons.refresh, size: 16),
               label: const Text('Retry'),
             ),
           ],
@@ -299,21 +222,21 @@ class _EmptyStateView extends StatelessWidget {
           children: [
             Icon(
               Icons.monitor_heart_outlined,
-              size: 64,
+              size: 48,
               color: Theme.of(context).colorScheme.outline,
             ),
             const SizedBox(height: 16),
             Text(
               'No Monitors',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'No monitors are configured in your Uptime Kuma instance.',
+              'No monitors found.',
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
