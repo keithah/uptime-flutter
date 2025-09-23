@@ -16,12 +16,23 @@ class SettingsService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final settingsJson = prefs.getString(_settingsKey);
-      
+
+      debugPrint('SettingsService: Loading settings...');
+      debugPrint('SettingsService: settingsJson = $settingsJson');
+
       if (settingsJson != null) {
         final settingsMap = jsonDecode(settingsJson) as Map<String, dynamic>;
         _settings = UptimeKumaSettings.fromJson(settingsMap);
+        debugPrint('SettingsService: Loaded settings from storage');
+      } else {
+        debugPrint('SettingsService: No settings found, using defaults');
       }
-      
+
+      debugPrint('SettingsService: serverUrl = ${_settings.serverUrl}');
+      debugPrint('SettingsService: username = ${_settings.username}');
+      debugPrint('SettingsService: password = ${_settings.password.isEmpty ? '(empty)' : '(set)'}');
+      debugPrint('SettingsService: isConfigured = ${_settings.isConfigured}');
+
       _isLoaded = true;
       notifyListeners();
     } catch (e) {

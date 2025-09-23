@@ -166,6 +166,8 @@ class UptimeKumaService extends ChangeNotifier {
       _log('Socket.IO connected successfully!');
       _setConnected(true);
       _setLoading(false);
+
+      // Start authentication immediately using callback-based approach
       _authenticate();
     });
     
@@ -189,30 +191,54 @@ class UptimeKumaService extends ChangeNotifier {
     // Handle authentication response
     _socket!.on('login', (data) => _handleLoginStatus(data));
     _socket!.on('loginStatus', (data) => _handleLoginStatus(data));
+    _socket!.on('auth', (data) => _handleLoginStatus(data));
+    _socket!.on('authStatus', (data) => _handleLoginStatus(data));
+    _socket!.on('needAuth', (data) => _handleNeedAuth(data));
+    _socket!.on('autoAuth', (data) => _handleAutoAuth(data));
+    _socket!.on('authRequired', (data) => _handleNeedAuth(data));
+    _socket!.on('error', (data) => _handleError(data));
     
     // Handle monitor data events
     _socket!.on('MONITOR_LIST', (data) => _processMonitorList(data));
     _socket!.on('monitorList', (data) => _processMonitorList(data));
+    _socket!.on('monitor:list', (data) => _processMonitorList(data));
+    _socket!.on('monitors', (data) => _processMonitorList(data));
+    _socket!.on('getMonitors', (data) => _processMonitorList(data));
+    _socket!.on('dashboard', (data) => _processDashboard(data));
     _socket!.on('HEARTBEAT', (data) => _processHeartbeat(data));
     _socket!.on('heartbeat', (data) => _processHeartbeat(data));
     _socket!.on('HEARTBEAT_LIST', (data) => _processHeartbeatList(data));
+    _socket!.on('heartbeatList', (data) => _processHeartbeatList(data));
     _socket!.on('UPTIME', (data) => _processUptime(data));
     _socket!.on('uptime', (data) => _processUptime(data));
     _socket!.on('AVG_PING', (data) => _processAvgPing(data));
     _socket!.on('avgPing', (data) => _processAvgPing(data));
     _socket!.on('info', (data) => _handleServerInfo(data));
+
+    // Debug: Listen to all events
+    _socket!.onAny((event, data) {
+      _log('Socket event received: $event with data: $data');
+    });
   }
   
   void _authenticate() {
-    _log('Sending authentication request...');
-    
+    _log('Sending authentication request with callback...');
+
+    // Use the same format as the working Swift implementation
     final loginData = {
       'username': _settings.username,
       'password': _settings.password,
       'token': '',
     };
-    
-    _socket!.emit('login', loginData);
+
+    _log('Authentication data: username=${_settings.username}, password=${_settings.password.isNotEmpty ? '(set)' : '(empty)'}');
+
+    // Send login with callback acknowledgment (matching Swift implementation)
+    _socket!.emitWithAck('login', loginData, ack: (data) {
+      _log('Login acknowledgment received: $data');
+      _handleLoginStatus(data);
+    });
+    _log('Sent login event with callback acknowledgment');
   }
   
   void _handleLoginStatus(dynamic data) {
@@ -239,54 +265,93 @@ class UptimeKumaService extends ChangeNotifier {
       _log('Server version detected: ${data['version']} - authentication complete!');
     }
   }
+
+  void _handleNeedAuth(dynamic data) {
+    _log('NeedAuth received: $data');
+    // Server is asking for authentication, so we should send it now
+    _authenticate();
+  }
+
+  void _handleAutoAuth(dynamic data) {
+    _log('AutoAuth received: $data');
+    if (data is Map<String, dynamic>) {
+      final success = data['success'] as bool? ?? false;
+      if (success) {
+        _log('Auto authentication successful!');
+        _requestMonitorList();
+      } else {
+        _log('Auto authentication failed, trying manual auth');
+        _authenticate();
+      }
+    }
+  }
+
+  void _handleError(dynamic data) {
+    _log('Socket error received: $data');
+    if (data is Map<String, dynamic>) {
+      final message = data['message'] ?? data['msg'] ?? data.toString();
+      _setError('Server error: $message');
+    } else {
+      _setError('Server error: $data');
+    }
+  }
   
   void _requestMonitorList() {
-    _log('Monitor data should come automatically via MONITOR_LIST event');
-    // According to Uptime Kuma API, monitor list is sent automatically after authentication
+    _log('According to uptime-kuma-api, monitor data should come automatically via MONITOR_LIST event');
+    _log('No explicit request needed - waiting for automatic events after authentication...');
+
+    // According to the uptime-kuma-api source, after authentication the server
+    // automatically sends MONITOR_LIST and other events. No explicit request needed.
   }
   
   void _processMonitorList(dynamic data) {
-    _log('Processing monitor list: $data');
-    
+    _log('Processing monitor list from MONITOR_LIST event: $data');
+
+    // Expect data format: [String: [String: Any]] matching Swift implementation
     if (data is Map<String, dynamic>) {
       final Map<int, Monitor> newMonitors = {};
-      
+
+      _log('Processing monitor dictionary with ${data.length} entries');
+
       for (final entry in data.entries) {
         final monitorIdStr = entry.key;
-        final monitorData = entry.value;
-        
-        if (monitorData is Map<String, dynamic>) {
+        final monitorInfo = entry.value;
+
+        if (monitorInfo is Map<String, dynamic>) {
           final monitorId = int.tryParse(monitorIdStr);
           if (monitorId != null) {
             try {
               final monitor = Monitor.fromJson({
                 'id': monitorId,
-                'name': monitorData['name'] ?? 'Unknown',
-                'url': monitorData['url'],
-                'type': monitorData['type'] ?? 'http',
-                'interval': monitorData['interval'] ?? 60,
-                'status': monitorData['status'],
-                'active': monitorData['active'] ?? false,
-                'parent': monitorData['parent'],
-                'childrenIDs': monitorData['childrenIDs'],
+                'name': monitorInfo['name'] ?? 'Unknown',
+                'url': monitorInfo['url'],
+                'type': monitorInfo['type'] ?? 'http',
+                'interval': monitorInfo['interval'] ?? 60,
+                'status': monitorInfo['active'] as bool? ?? false,
+                'active': monitorInfo['active'] as bool? ?? false,
+                'parent': monitorInfo['parent'],
+                'childrenIDs': monitorInfo['childrenIDs'],
               });
-              
+
               newMonitors[monitorId] = monitor;
-              _log('Created monitor: ${monitor.name} (ID: $monitorId)');
+              _log('Created monitor: ${monitor.name} (ID: $monitorId, parent: ${monitor.parent?.toString() ?? "nil"})');
             } catch (e) {
               _log('Error parsing monitor $monitorId: $e');
             }
           }
         }
       }
-      
+
       _monitors.clear();
       _monitors.addAll(newMonitors);
       _organizeMonitorsIntoGroups();
       _updateLastUpdate();
-      
+
       _log('Updated monitors list with ${_monitors.length} monitors');
       notifyListeners();
+    } else {
+      _log('Unexpected monitor data format: ${data.runtimeType}');
+      _log('Data received: $data');
     }
   }
   
@@ -335,6 +400,21 @@ class UptimeKumaService extends ChangeNotifier {
   void _processAvgPing(dynamic data) {
     _log('Processing average ping: $data');
     // Handle average ping data
+  }
+
+  void _processDashboard(dynamic data) {
+    _log('Processing dashboard data: $data');
+    // Dashboard data might contain monitor information
+    if (data is Map<String, dynamic>) {
+      if (data.containsKey('monitors')) {
+        _processMonitorList(data['monitors']);
+      } else if (data.containsKey('monitorList')) {
+        _processMonitorList(data['monitorList']);
+      } else {
+        // Try processing the entire data as monitor list
+        _processMonitorList(data);
+      }
+    }
   }
   
   void _organizeMonitorsIntoGroups() {
@@ -533,7 +613,7 @@ class UptimeKumaService extends ChangeNotifier {
   
   void _log(String message) {
     if (kDebugMode) {
-      developer.log(message, name: 'UptimeKumaService');
+      debugPrint('UptimeKumaService: $message');
     }
   }
   

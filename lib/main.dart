@@ -61,7 +61,7 @@ class UptimeKumaApp extends StatelessWidget {
                 centerTitle: true,
                 elevation: 0,
               ),
-              cardTheme: CardTheme(
+              cardTheme: CardThemeData(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -78,14 +78,14 @@ class UptimeKumaApp extends StatelessWidget {
                 centerTitle: true,
                 elevation: 0,
               ),
-              cardTheme: CardTheme(
+              cardTheme: CardThemeData(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
             ),
-            themeMode: ThemeMode.system,
+            themeMode: ThemeMode.dark,
             home: const AppInitializer(),
           );
         },
@@ -132,12 +132,19 @@ class _AppInitializerState extends State<AppInitializer> {
       
       // Configure uptime service if settings are available
       if (settingsService.settings.isConfigured) {
+        print('AppInitializer: Settings are configured, setting up UptimeKuma service');
         final uptimeService = context.read<UptimeKumaService>();
         final notificationService = NotificationService();
-        
+
+        print('AppInitializer: Setting notification service');
         // Connect notification service to uptime service
         uptimeService.setNotificationService(notificationService);
+
+        print('AppInitializer: Updating settings and connecting');
         uptimeService.updateSettings(settingsService.settings);
+        print('AppInitializer: UptimeKuma service setup completed');
+      } else {
+        print('AppInitializer: Settings are not configured');
       }
     }
   }
@@ -181,67 +188,7 @@ class _MainAppState extends State<MainApp> {
 
   @override
   Widget build(BuildContext context) {
-    // For desktop, show a single window with navigation rail
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      return Scaffold(
-        body: Row(
-          children: [
-            NavigationRail(
-              selectedIndex: _selectedIndex,
-              onDestinationSelected: (index) {
-                setState(() {
-                  _selectedIndex = index;
-                });
-              },
-              labelType: NavigationRailLabelType.selected,
-              destinations: const [
-                NavigationRailDestination(
-                  icon: Icon(Icons.dashboard_outlined),
-                  selectedIcon: Icon(Icons.dashboard),
-                  label: Text('Dashboard'),
-                ),
-                NavigationRailDestination(
-                  icon: Icon(Icons.settings_outlined),
-                  selectedIcon: Icon(Icons.settings),
-                  label: Text('Settings'),
-                ),
-              ],
-            ),
-            const VerticalDivider(thickness: 1, width: 1),
-            Expanded(
-              child: _pages[_selectedIndex],
-            ),
-          ],
-        ),
-      );
-    }
-    
-    // For mobile, show bottom navigation
-    return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _pages,
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Dashboard',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
-      ),
-    );
+    // For popover/menubar usage, show just the dashboard without navigation
+    return const HomeScreen();
   }
 }
