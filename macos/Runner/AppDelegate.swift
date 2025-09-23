@@ -9,10 +9,6 @@ class AppDelegate: FlutterAppDelegate {
   // Instance of the popover that will display the Flutter UI
   var flutterUIPopover = NSPopover.init()
 
-  // Dedicated Flutter engine and view controller for the popover
-  var popoverFlutterEngine: FlutterEngine?
-  var popoverFlutterViewController: FlutterViewController?
-
   // Initializer for the AppDelegate class
   override init() {
     // Set the popover behavior to transient, meaning it will close when the user clicks outside of it
@@ -29,79 +25,56 @@ class AppDelegate: FlutterAppDelegate {
   override func applicationDidFinishLaunching(_ aNotification: Notification) {
     print("AppDelegate: applicationDidFinishLaunching called")
 
-    // Hide main window immediately before super call
-    if let window = mainFlutterWindow {
-      window.orderOut(nil)
-      window.setIsVisible(false)
-    }
-
-    // Call the superclass's applicationDidFinishLaunching function
+    // Call super first to setup plugins
     super.applicationDidFinishLaunching(aNotification)
-    print("AppDelegate: super.applicationDidFinishLaunching completed")
 
-    // Close the main window completely after super call
-    if let window = mainFlutterWindow {
-      window.close()
+    print("AppDelegate: About to schedule delayed setup")
+
+    // Delay to ensure window is fully created before accessing it
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+      print("AppDelegate: Delayed setup block executing")
+
+      // Set up status bar BEFORE closing window to access FlutterViewController
+      self.setupStatusBarOnly()
+
+      // Now hide the main window after status bar is set up
+      if let window = self.mainFlutterWindow {
+        print("AppDelegate: Closing main window")
+        window.orderOut(nil)
+        window.setIsVisible(false)
+        window.close()
+      } else {
+        print("AppDelegate: mainFlutterWindow is nil")
+      }
+
+      print("AppDelegate: Setup complete - menubar only app running")
     }
-
-    // Set up status bar with dedicated Flutter engine
-    self.setupStatusBarOnly()
   }
 
   private func setupStatusBarOnly() {
     print("AppDelegate: setupStatusBarOnly called")
 
-    // Create a dedicated Flutter engine for the popover
-    popoverFlutterEngine = FlutterEngine(name: "popover_engine", project: nil)
-    popoverFlutterEngine?.run(withEntrypoint: nil)
-
-    // Create a Flutter view controller for the popover
-    popoverFlutterViewController = FlutterViewController(engine: popoverFlutterEngine!, nibName: nil, bundle: nil)
-
-    // Set the size of the popover to match your screenshot
-    flutterUIPopover.contentSize = NSSize(width: 400, height: 600)
-    flutterUIPopover.contentViewController = popoverFlutterViewController
-
-    // Initialize the status bar controller with the popover
-    print("AppDelegate: About to initialize StatusBarController")
-    statusBarController = StatusBarController.init(flutterUIPopover)
-    print("AppDelegate: StatusBarController initialized successfully")
-  }
-
-  private func setupStatusBar() {
-    print("AppDelegate: setupStatusBar called")
-
     // Get the FlutterViewController from the main Flutter window
-    print("AppDelegate: Getting FlutterViewController from mainFlutterWindow")
     guard let mainWindow = mainFlutterWindow else {
       print("AppDelegate: ERROR - mainFlutterWindow is nil")
       return
     }
-    print("AppDelegate: mainFlutterWindow exists: \(mainWindow)")
 
     guard let flutterViewController = mainWindow.contentViewController as? FlutterViewController else {
       print("AppDelegate: ERROR - contentViewController is not a FlutterViewController")
       return
     }
-    print("AppDelegate: FlutterViewController found: \(flutterViewController)")
 
-    // Set the size of the popover
-    flutterUIPopover.contentSize = NSSize(width: 400, height: 600) // Size for Uptime Kuma interface
+    // Set the size of the popover to match your screenshot
+    flutterUIPopover.contentSize = NSSize(width: 400, height: 600)
 
-    // Set the content view controller for the popover to the FlutterViewController
+    // Use the main Flutter view controller in the popover
     flutterUIPopover.contentViewController = flutterViewController
 
     // Initialize the status bar controller with the popover
     print("AppDelegate: About to initialize StatusBarController")
     statusBarController = StatusBarController.init(flutterUIPopover)
     print("AppDelegate: StatusBarController initialized successfully")
-
-    // Close the default Flutter window as the Flutter UI will be displayed in the popover
-    print("AppDelegate: About to close main Flutter window")
-    mainFlutterWindow?.close()
-    print("AppDelegate: Main Flutter window closed")
-
-    print("Status bar controller initialized: \(statusBarController != nil)")
   }
 
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
