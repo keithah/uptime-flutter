@@ -11,6 +11,7 @@ env:
 
 jobs:
   analyze-and-test:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -67,6 +68,7 @@ jobs:
       run: flutter test
 
   build-macos-development:
+    timeout-minutes: 10
     runs-on: macos-latest
     needs: analyze-and-test
     if: github.event_name != 'pull_request'
@@ -380,6 +382,7 @@ jobs:
         security delete-keychain $RUNNER_TEMP/app-signing.keychain-db || true
 
   build-linux:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     needs: analyze-and-test
 
